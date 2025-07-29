@@ -1,5 +1,7 @@
 .env
 ingestion/src/plugins/**
+!ingestion/src/plugins/example/
+!ingestion/src/plugins/example/**
 !.gitkeep
 
 node_modules
