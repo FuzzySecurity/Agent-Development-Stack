@@ -1,0 +1,19 @@
+{
+  "name": "agent-stack-unittest",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "kafka-cli": "./kafka.js",
+    "minio-cli": "./minio.js",
+    "qdrant-cli": "./qdrant.js",
+    "neo4j-cli": "./neo4j.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "@aws-sdk/client-s3": "^3.517.0",
+    "@smithy/node-http-handler": "^2.4.1",
+    "@qdrant/qdrant-js": "^1.15.0",
+    "neo4j-driver": "^5.28.1"
+  }
+} 

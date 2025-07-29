@@ -1,0 +1,7 @@
+CREATE CONSTRAINT entity_unique IF NOT EXISTS
+FOR (e:Entity)
+REQUIRE (e.sourceId) IS UNIQUE;
+
+CREATE CONSTRAINT relation_source IF NOT EXISTS
+FOR (r:Relation)
+REQUIRE (r.fp) IS UNIQUE;

@@ -1,0 +1,322 @@
+services:
+  neo4j:
+    image: neo4j:5.25-enterprise
+    container_name: neo4j
+    environment:
+      ## License/Auth
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
+      # Simplest: Neo4j will create the user and set the password on first boot
+      NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
+
+      ## Network bindings (listen on all ifaces; advertise something routable)
+      NEO4J_server_default__listen__address: "0.0.0.0"
+      NEO4J_server_default__advertised__address: "neo4j"   # or your host/IP
+
+      NEO4J_server_https_listen__address: ":7473"
+      NEO4J_server_bolt_listen__address: ":7687"
+      NEO4J_server_routing_listen__address: ":7688"
+      NEO4J_server_backup_listen__address: "0.0.0.0:6362"
+
+      ## Memory (5.x keys)
+      NEO4J_server_memory_heap_initial__size: "${NEO4J_HEAP_INIT}"
+      NEO4J_server_memory_heap_max__size: "${NEO4J_HEAP_MAX}"
+
+      ## Plugins / APOC
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_security_procedures_allowlist:   "apoc.*"
+      NEO4J_apoc_trigger_enabled: "true"
+      NEO4J_apoc_job_enabled: "true"
+      NEO4J_apoc_export_file_enabled: "true"
+      NEO4J_apoc_import_file_enabled: "true"
+
+      ## Turn off telemetry
+      NEO4J_dbms_usage__report_enabled: "false"
+      NEO4J_client_allow__telemetry: "false"
+
+      # --- Enable HTTPS and secure Bolt with TLS (Neo4j 5.x) ---
+      NEO4J_server_https_enabled: "true"
+      NEO4J_server_http_enabled: "false"
+      NEO4J_server_bolt_tls__level: "REQUIRED"
+
+      # HTTPS SSL policy (certs in /ssl/https)
+      NEO4J_dbms_ssl_policy_https_enabled: "true"
+      NEO4J_dbms_ssl_policy_https_base__directory: "/ssl/https"
+      NEO4J_dbms_ssl_policy_https_private__key: "private.key"
+      NEO4J_dbms_ssl_policy_https_public__certificate: "public.crt"
+      NEO4J_dbms_ssl_policy_https_client__auth: "NONE"
+
+      # Bolt SSL policy (certs in /ssl/bolt)
+      NEO4J_dbms_ssl_policy_bolt_enabled: "true"
+      NEO4J_dbms_ssl_policy_bolt_base__directory: "/ssl/bolt"
+      NEO4J_dbms_ssl_policy_bolt_private__key: "private.key"
+      NEO4J_dbms_ssl_policy_bolt_public__certificate: "public.crt"
+      NEO4J_dbms_ssl_policy_bolt_client__auth: "NONE"
+
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_certs:/ssl:ro
+      - ./scripts/init_neo4j_constraints.cypher:/init/constraints.cypher:ro
+    ports:
+      - "7473:7473"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD",
+         "/var/lib/neo4j/bin/cypher-shell",
+         "--non-interactive","--format","plain",
+         "-a","neo4j+ssc://neo4j:7687",
+         "-u","${NEO4J_USER}","-p","${NEO4J_PASSWORD}",
+         "RETURN 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  neo4j-init:
+    container_name: neo4j-init
+    image: neo4j:5.25-enterprise
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - ./scripts/init_neo4j_constraints.cypher:/init/constraints.cypher:ro
+      - type: tmpfs
+        target: /data
+      - type: tmpfs
+        target: /logs
+    entrypoint: ["/var/lib/neo4j/bin/cypher-shell",
+              "--non-interactive","--format","plain",
+              "-a","neo4j+ssc://neo4j:7687",
+              "-u","${NEO4J_USER}","-p","${NEO4J_PASSWORD}",
+              "-f","/init/constraints.cypher"]
+    restart: "no"
+
+  kafka:
+    image: bitnami/kafka:3.8
+    container_name: kafka
+    depends_on:
+      ssl-cert-init: {condition: service_completed_successfully}
+    environment:
+      KAFKA_ENABLE_KRAFT: "yes"
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Listen internally on 9094 and expose an EXTERNAL listener for host access
+      KAFKA_CFG_LISTENERS: SASL_SSL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:${KAFKA_LISTENER_PORT}
+      # The broker will advertise the Docker-network host for internal traffic and localhost for external
+      KAFKA_CFG_ADVERTISED_LISTENERS: SASL_SSL://kafka:9094,EXTERNAL://localhost:${KAFKA_LISTENER_PORT}
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,SASL_SSL:SASL_SSL,EXTERNAL:SASL_SSL
+      # Clients inside the network use SASL_SSL, brokers talk via SASL_SSL, but external apps should use EXTERNAL
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: SASL_SSL
+      # SASL / SCRAM auth
+      KAFKA_CFG_SASL_ENABLED_MECHANISMS: SCRAM-SHA-256
+      KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-256
+      KAFKA_CLIENT_USERS: "${KAFKA_USERNAME}"
+      KAFKA_CLIENT_PASSWORDS: "${KAFKA_PASSWORD}"
+      # TLS auto-generated (self-signed) certs
+      KAFKA_TLS_TYPE: JKS
+      KAFKA_CERTIFICATE_PASSWORD: "${TLS_CERT_PASSWORD}"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CFG_NUM_PARTITIONS: 3
+    volumes: [kafka_data:/bitnami/kafka, kafka_certs:/bitnami/kafka/config/certs:ro]
+    ports: ["${KAFKA_LISTENER_PORT}:${KAFKA_LISTENER_PORT}"]
+    healthcheck:
+      test: ["CMD-SHELL","bash -c 'echo > /dev/tcp/localhost/9094'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  kafka-init:
+    image: bitnami/kafka:latest
+    container_name: ai-agent-stack-kafka-init
+    depends_on:
+      kafka: {condition: service_healthy}
+      ssl-cert-init: {condition: service_completed_successfully}
+    environment:
+      KAFKA_USERNAME: "${KAFKA_USERNAME}"
+      KAFKA_PASSWORD: "${KAFKA_PASSWORD}"
+      KAFKA_SASL_MECHANISM: "${KAFKA_SASL_MECHANISM}"
+      TLS_CERT_PASSWORD: "${TLS_CERT_PASSWORD}"
+      TOPIC_RAW: "${TOPIC_RAW}"
+      TOPIC_DOMAIN: "${TOPIC_DOMAIN}"
+      TOPIC_DLQ: "${TOPIC_DLQ}"
+    entrypoint: >
+      bash -c "
+        set -e
+        CLIENT_PROPERTIES=/tmp/client.properties
+        # Ensure SASL mechanism is uppercase for compatibility.
+        SASL_MECHANISM_UPPER=$$(echo \"$${KAFKA_SASL_MECHANISM:-SCRAM-SHA-256}\" | tr '[:lower:]' '[:upper:]')
+
+        # --- Create Kafka client properties ---
+        echo \"security.protocol=SASL_SSL\" > $$CLIENT_PROPERTIES
+        echo \"sasl.mechanism=$$SASL_MECHANISM_UPPER\" >> $$CLIENT_PROPERTIES
+        echo \"sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username=\\\"$${KAFKA_USERNAME}\\\" password=\\\"$${KAFKA_PASSWORD}\\\";\" >> $$CLIENT_PROPERTIES
+        echo \"ssl.truststore.location=/certs/kafka.truststore.jks\" >> $$CLIENT_PROPERTIES
+        echo \"ssl.truststore.password=$${TLS_CERT_PASSWORD}\" >> $$CLIENT_PROPERTIES
+
+        echo 'Created client.properties:'
+        cat $$CLIENT_PROPERTIES
+
+        # --- Create Topics ---
+        kafka-topics.sh --bootstrap-server kafka:9094 --command-config $$CLIENT_PROPERTIES --create --if-not-exists --topic ${TOPIC_RAW} --partitions 3 --replication-factor 1
+        kafka-topics.sh --bootstrap-server kafka:9094 --command-config $$CLIENT_PROPERTIES --create --if-not-exists --topic ${TOPIC_DOMAIN} --partitions 3 --replication-factor 1
+        kafka-topics.sh --bootstrap-server kafka:9094 --command-config $$CLIENT_PROPERTIES --create --if-not-exists --topic ${TOPIC_DLQ} --partitions 3 --replication-factor 1
+        
+        echo 'Topics created successfully.'
+        echo 'Kafka init completed - exiting.'
+      "
+    # Avoid anonymous /bitnami volume; we only need certs.
+    volumes:
+      - kafka_certs:/certs:ro
+    restart: "no"
+
+  ssl-cert-init:
+    image: eclipse-temurin:21-jammy
+    container_name: ssl-cert-init
+    environment:
+      TLS_CERT_PASSWORD: "${TLS_CERT_PASSWORD}"
+    entrypoint: /bin/bash
+    command: |-
+      -c 'set -e
+      # Output dirs per service (volumes are mounted here)
+      KAFKA_DIR=/out/kafka
+      MINIO_DIR=/out/minio
+      NEO4J_DIR=/out/neo4j
+      QDRANT_DIR=/out/qdrant
+      PASS=$$TLS_CERT_PASSWORD
+
+      mkdir -p $$KAFKA_DIR $$MINIO_DIR $$NEO4J_DIR $$QDRANT_DIR
+
+      echo "Generating Kafka JKS certificates …"
+      keytool -genkeypair -alias broker -keyalg RSA -storetype JKS \
+        -keystore $$KAFKA_DIR/kafka.keystore.jks -storepass $$PASS -keypass $$PASS \
+        -dname "CN=kafka" -validity 3650 -noprompt
+      keytool -exportcert -alias broker -keystore $$KAFKA_DIR/kafka.keystore.jks \
+        -storepass $$PASS -file $$KAFKA_DIR/broker.crt -rfc
+      keytool -import -alias broker -file $$KAFKA_DIR/broker.crt \
+        -keystore $$KAFKA_DIR/kafka.truststore.jks -storepass $$PASS -noprompt
+
+      gen_pem() {
+        local DIR=$1 CN=$2
+        openssl genrsa -out $$DIR/private.key 2048
+        openssl req -new -key $$DIR/private.key -out $$DIR/$$CN.csr -subj "/CN=$$CN/O=Development/C=US"
+        openssl x509 -req -in $$DIR/$$CN.csr -signkey $$DIR/private.key \
+          -out $$DIR/public.crt -days 3650 \
+          -extensions v3_req -extfile <(echo "[v3_req]"; echo "subjectAltName=DNS:$$CN,DNS:localhost")
+        rm $$DIR/$$CN.csr
+      }
+
+      echo "Generating Neo4j and Qdrant certificates …"
+      gen_pem $$QDRANT_DIR qdrant
+      gen_pem $$NEO4J_DIR neo4j
+
+      # Prepare Neo4j folder structure expected by SSL policies
+      mkdir -p $$NEO4J_DIR/https $$NEO4J_DIR/bolt
+      cp $$NEO4J_DIR/private.key $$NEO4J_DIR/https/private.key
+      cp $$NEO4J_DIR/public.crt  $$NEO4J_DIR/https/public.crt
+      cp $$NEO4J_DIR/private.key $$NEO4J_DIR/bolt/private.key
+      cp $$NEO4J_DIR/public.crt  $$NEO4J_DIR/bolt/public.crt
+
+      echo "Generating MinIO default certificate …"
+      openssl genrsa -out $$MINIO_DIR/private.key 2048
+      openssl req -new -key $$MINIO_DIR/private.key -out $$MINIO_DIR/minio.csr -subj "/CN=minio/O=Development/C=US"
+      openssl x509 -req -in $$MINIO_DIR/minio.csr -signkey $$MINIO_DIR/private.key \
+        -out $$MINIO_DIR/public.crt -days 3650 \
+        -extensions v3_req -extfile <(echo "[v3_req]"; echo "subjectAltName=DNS:minio,DNS:localhost,IP:127.0.0.1")
+      rm $$MINIO_DIR/minio.csr
+
+      chmod -R a+r /out
+      echo "All certificates generated successfully."'
+    volumes:
+      - kafka_certs:/out/kafka
+      - minio_certs:/out/minio
+      - neo4j_certs:/out/neo4j
+      - qdrant_certs:/out/qdrant
+    restart: "no"
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    depends_on:
+      ssl-cert-init: {condition: service_completed_successfully}
+    command: server /data --console-address ":9001" --certs-dir /certs
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes: [minio_data:/data, minio_certs:/certs:ro]
+    ports: ["9000:9000","9001:9001"]
+    healthcheck:
+      test: ["CMD","curl","-f","--insecure","https://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    depends_on:
+      ssl-cert-init: {condition: service_completed_successfully}
+    environment:
+      # Enable TLS for both REST and gRPC
+      QDRANT__SERVICE__ENABLE_TLS: "true"
+      QDRANT__TLS__CERT: "/tls/public.crt"
+      QDRANT__TLS__KEY:  "/tls/private.key"
+      QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY}"
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - qdrant_certs:/tls:ro
+    ports: ["6333:6333","6334:6334"]
+    healthcheck:
+      test: ["CMD","test","-f","/qdrant/storage/raft_state.json"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ingestion:
+    build: ./ingestion
+    container_name: ingestion
+    depends_on:
+      neo4j: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      qdrant: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    environment:
+      NODE_ENV: "${NODE_ENV}"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      KAFKA_BROKERS_INTERNAL: "${KAFKA_BROKERS_INTERNAL}"
+      KAFKA_GROUP_ID: "${KAFKA_GROUP_ID:-normalizer-group}"
+      KAFKA_USERNAME: "${KAFKA_USERNAME}"
+      KAFKA_PASSWORD: "${KAFKA_PASSWORD}"
+      KAFKA_SASL_MECHANISM: "${KAFKA_SASL_MECHANISM}"
+      KAFKA_USE_LEGACY_PARTITIONER: "${KAFKA_USE_LEGACY_PARTITIONER:-false}"
+      NEO4J_URI: "${NEO4J_BOLT_INTERNAL}"
+      RAW_TOPIC: "${TOPIC_RAW}"
+      DOMAIN_TOPIC: "${TOPIC_DOMAIN}"
+      DLQ_TOPIC: "${TOPIC_DLQ}"
+      BATCH_FLUSH_MS: "${BATCH_FLUSH_MS}"
+      NEO4J_USER: "${NEO4J_USER}"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      METRICS_PORT: "${METRICS_PORT}"
+      QDRANT_URL: "${QDRANT_URL_INTERNAL}"
+      QDRANT_API_KEY: "${QDRANT_API_KEY}"
+      MINIO_URL: "${MINIO_URL_INTERNAL}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+    volumes:
+      - ./ingestion/src:/app/src
+      - ./ingestion/tsconfig.json:/app/tsconfig.json
+      - ./ingestion/package.json:/app/package.json
+    ports: ["9100:9100"]
+    command: ["npm","run","start:dev"]
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  kafka_data:
+  minio_data:
+  qdrant_data:
+  kafka_certs:
+  minio_certs:
+  neo4j_certs:
+  qdrant_certs:

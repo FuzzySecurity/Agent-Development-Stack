@@ -1,0 +1,7 @@
+.env
+ingestion/src/plugins/**
+!.gitkeep
+
+node_modules
+dist
+npm-debug.log*

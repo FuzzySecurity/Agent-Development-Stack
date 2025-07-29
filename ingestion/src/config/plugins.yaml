@@ -1,0 +1,5 @@
+normalizers:
+  sensor_report: "plugins/example/normalizer"
+
+upserters:
+  SENSOR_READING: "plugins/example/upserter"
