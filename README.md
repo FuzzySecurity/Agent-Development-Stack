@@ -130,22 +130,101 @@ cp .env.example .env
 ```
 
 ### 2. **Start the Stack**
-```bash
-# Build and start all services
-docker-compose -p "ai-agent-stack" up --build -d
 
-# Check status
-docker-compose -p "ai-agent-stack" ps
+The stack includes two functionally equivalent management scripts that handle service orchestration automatically. These scripts contain custom logic to start/stop containers in the proper dependency order, wait for health checks, and clean up temporary initialization containers after deployment.
+
+```
+PS C:\> .\manage-stack.ps1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🚀 AI Agent Stack Management Script
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+USAGE:
+  .\manage-stack.ps1 -Build   # Build and start the stack
+  .\manage-stack.ps1 -Start   # Start existing containers
+  .\manage-stack.ps1 -Stop    # Stop all containers
+  .\manage-stack.ps1 -Clean   # Remove containers and volumes
+  .\manage-stack.ps1 -Help    # Show this help message
+
+COMMANDS:
+  -Build   Build the entire Docker stack with proper service ordering
+           • Builds and starts all services
+           • Waits for core services to be healthy
+           • Starts ingestion service last
+           • Cleans up init containers automatically
+
+  -Start   Start existing containers in proper order
+           • Starts core services first
+           • Waits for core services to be healthy
+           • Starts ingestion service last
+           • No rebuilding - uses existing containers
+
+  -Stop    Stop all running containers
+           • Gracefully stops all services
+           • Preserves data and container state
+
+  -Clean   Remove all containers and volumes (DESTRUCTIVE)
+           • Permanently deletes all containers
+           • Removes all Docker volumes and data
+           • Requires confirmation
+
+EXAMPLES:
+  # Build a fresh environment
+  .\manage-stack.ps1 -Build
+
+  # Restart stopped services
+  .\manage-stack.ps1 -Start
+
+  # Stop for maintenance
+  .\manage-stack.ps1 -Stop
+
+  # Complete reset (removes all data)
+  .\manage-stack.ps1 -Clean
+```
+
+**Windows (PowerShell):**
+```powershell
+# Build and start all services with proper dependency handling
+.\manage-stack.ps1 -Build
+
+# Or restart existing containers
+.\manage-stack.ps1 -Start
+```
+
+**Linux/Mac (Bash):**
+```bash
+# Build and start all services with proper dependency handling
+./manage-stack.sh build
+
+# Or restart existing containers  
+./manage-stack.sh start
 ```
 
 ### 3. **Stop the Stack**
-```bash
+
+**Windows (PowerShell):**
+```powershell
 # Stop services (preserves data)
-docker-compose -p "ai-agent-stack" down
+.\manage-stack.ps1 -Stop
 
 # Complete reset (deletes all data)
-docker-compose -p "ai-agent-stack" down --volumes --rmi all
+.\manage-stack.ps1 -Clean
 ```
+
+**Linux/Mac (Bash):**
+```bash
+# Stop services (preserves data)
+./manage-stack.sh stop
+
+# Complete reset (deletes all data)
+./manage-stack.sh clean
+```
+
+> **💡 Pro Tips:**
+> - Use `build` for first-time setup or after code changes  
+> - Use `start`/`stop` for quick development cycles
+> - Use `clean` to completely reset your environment
+> - Scripts handle service dependencies and init container cleanup automatically
 
 ---
 
