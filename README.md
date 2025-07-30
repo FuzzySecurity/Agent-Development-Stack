@@ -113,17 +113,17 @@ Once running, these services are available for development:
 |-----------|-----|---------|
 | Metrics | [http://localhost:9100/metrics](http://localhost:9100/metrics) | Prometheus monitoring |
 
-**Authentication:** All services use credentials from your `.env` file.
-**SSL:** HTTPS endpoints use auto-generated self-signed certificates.
+- **Authentication:** All services use credentials from your `.env` file.
+- **SSL:** HTTPS endpoints use auto-generated self-signed certificates.
 
 ---
 
 ## 🚀 **Quick Start**
 
 ### 1. **Environment Setup**
-```bash
+```
 # Copy example configuration
-cp .env.example .env
+Copy-Item .env.example .env
 
 # Edit .env with your preferred settings
 # (passwords, ports, etc.)

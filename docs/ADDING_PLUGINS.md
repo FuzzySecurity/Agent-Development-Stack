@@ -518,23 +518,7 @@ export const findControversialReviews = async (vector: number[], productId: stri
 };
 ```
 
-### 3.2  Error Handling & Resilience
-
-A minimal exponential-backoff wrapper:
-
-```typescript
-import { retry } from "../../core/util/retry.js";
-
-/**
- * Retry operations with exponential backoff and jitter.
- * Automatically forwards failed events to dead letter queue after exhaustion.
- */
-await retry(() => upsert(event), { retries: 3, baseMs: 500 });
-```
-
-The core `retry` helper logs attempts and forwards the event to the dead-letter queue after exhaustion.
-
-### 3.3 Cross-Reference (Neo4j ↔ MinIO)
+### 3.2 Cross-Reference (Neo4j ↔ MinIO)
 
 ```typescript
 /**
@@ -562,6 +546,22 @@ const listReviewImages = async (productId: string) => {
   }
 };
 ```
+
+### 3.3 Error Handling & Resilience
+
+A minimal exponential-backoff wrapper:
+
+```typescript
+import { retry } from "../../core/util/retry.js";
+
+/**
+ * Retry operations with exponential backoff and jitter.
+ * Automatically forwards failed events to dead letter queue after exhaustion.
+ */
+await retry(() => upsert(event), { retries: 3, baseMs: 500 });
+```
+
+The core `retry` helper logs attempts and forwards the event to the dead-letter queue after exhaustion.
 
 ---
 
