@@ -129,7 +129,7 @@ Copy-Item .env.example .env
 # (passwords, ports, etc.)
 ```
 
-### 2. **Start the Stack**
+### 2. **Management**
 
 The stack includes two functionally equivalent management scripts that handle service orchestration automatically. These scripts contain custom logic to start/stop containers in the proper dependency order, wait for health checks, and clean up temporary initialization containers after deployment.
 
@@ -182,6 +182,8 @@ EXAMPLES:
   .\manage-stack.ps1 -Clean
 ```
 
+### 3. **Start the Stack**
+
 **Windows (PowerShell):**
 ```powershell
 # Build and start all services with proper dependency handling
@@ -200,7 +202,7 @@ EXAMPLES:
 ./manage-stack.sh start
 ```
 
-### 3. **Stop the Stack**
+### 4. **Stop the Stack**
 
 **Windows (PowerShell):**
 ```powershell
